@@ -15,6 +15,7 @@
 //
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
 using Xamarin.Auth;
 
 namespace Xamarin.Auth
@@ -28,6 +29,8 @@ namespace Xamarin.Auth
 	public class OAuth2Request : Request
 #endif
 	{
+		private readonly bool _useHeaderForToken;
+
 		/// <summary>
 		/// Initializes a new instance of the <see cref="OAuth2Request"/> class.
 		/// </summary>
@@ -37,19 +40,36 @@ namespace Xamarin.Auth
 		/// Parameters that will pre-populate the <see cref="Request.Parameters"/> property or <c>null</c>.
 		/// </param>
 		/// <param name='account'>The account used to authenticate this request.</param>
-		public OAuth2Request (string method, Uri url, IDictionary<string, string> parameters, Account account)
-			: base (method, url, parameters, account)
+		/// <param name="useHeaderForToken">True if HTTP Authorization header with Bearer token should be used.  False if a queryString parameter should be used.</param>
+		public OAuth2Request(string method, Uri url, IDictionary<string, string> parameters, Account account, bool useHeaderForToken = false)
+			: base(method, url, parameters, account)
 		{
+			_useHeaderForToken = useHeaderForToken;
 			AccessTokenParameterName = "access_token";
 		}
-		
+
+		protected override HttpRequestMessage GetPreparedWebRequest()
+		{
+			var ret = base.GetPreparedWebRequest();
+
+			if (_useHeaderForToken)
+			{
+				ret.Headers.Add("Authorization", GetAuthorizationHeader(this.Account));
+			}
+			return ret;
+		}
+
 		/// <summary>
 		/// Gets the OAuth2 prepared URL.
 		/// </summary>
 		/// <returns>The OAuth2 prepared URL.</returns>
-		protected override Uri GetPreparedUrl ()
+		protected override Uri GetPreparedUrl()
 		{
-			return GetAuthenticatedUrl (Account, base.GetPreparedUrl (), AccessTokenParameterName);
+			if (_useHeaderForToken)
+				return base.GetPreparedUrl();
+
+			//if not using header, must get queryString
+			return GetAuthenticatedUrl(Account, base.GetPreparedUrl(), AccessTokenParameterName);
 		}
 
 		/// <summary>
@@ -72,27 +92,38 @@ namespace Xamarin.Auth
 		/// <param name='unauthenticatedUrl'>The unauthenticated URL.</param>
 		/// <param name='accessTokenParameterName'>The name of the access token parameter.</param>
 		/// <seealso cref="AccessTokenParameterName"/>
-		public static Uri GetAuthenticatedUrl (Account account, Uri unauthenticatedUrl, string accessTokenParameterName = "access_token")
+		public static Uri GetAuthenticatedUrl(Account account, Uri unauthenticatedUrl, string accessTokenParameterName = "access_token")
 		{
-			if (account == null) {
-				throw new ArgumentNullException ("account");
-			}
-			if (!account.Properties.ContainsKey ("access_token")) {
-				throw new ArgumentException ("OAuth2 account is missing required access_token property.", "account");
-			}
-			if (unauthenticatedUrl == null) {
-				throw new ArgumentNullException ("unauthenticatedUrl");
-			}
-			
+			ValidateAccount(account, unauthenticatedUrl);
+
 			var url = unauthenticatedUrl.AbsoluteUri;
-			
-			if (url.Contains ("?")) {
-				url += "&" + accessTokenParameterName + "=" + account.Properties ["access_token"];
-			} else {
-				url += "?" + accessTokenParameterName + "=" + account.Properties ["access_token"];
+
+			if (url.Contains("?"))
+			{
+				url += "&" + accessTokenParameterName + "=" + account.Properties["access_token"];
 			}
-			
-			return new Uri (url);
+			else
+			{
+				url += "?" + accessTokenParameterName + "=" + account.Properties["access_token"];
+			}
+
+			return new Uri(url);
+		}
+
+		private static void ValidateAccount(Account account, Uri unauthenticatedUrl)
+		{
+			if (account == null)
+			{
+				throw new ArgumentNullException("account");
+			}
+			if (!account.Properties.ContainsKey("access_token"))
+			{
+				throw new ArgumentException("OAuth2 account is missing required access_token property.", "account");
+			}
+			if (unauthenticatedUrl == null)
+			{
+				throw new ArgumentNullException("unauthenticatedUrl");
+			}
 		}
 
 		/// <summary>
@@ -102,16 +133,18 @@ namespace Xamarin.Auth
 		/// The authorization header.
 		/// </returns>
 		/// <param name='account'>The <see cref="Account"/> that's been authenticated.</param>
-		public static string GetAuthorizationHeader (Account account)
+		public static string GetAuthorizationHeader(Account account)
 		{
-			if (account == null) {
-				throw new ArgumentNullException ("account");
+			if (account == null)
+			{
+				throw new ArgumentNullException("account");
 			}
-			if (!account.Properties.ContainsKey ("access_token")) {
-				throw new ArgumentException ("OAuth2 account is missing required access_token property.", "account");
+			if (!account.Properties.ContainsKey("access_token"))
+			{
+				throw new ArgumentException("OAuth2 account is missing required access_token property.", "account");
 			}
-			
-			return "Bearer " + account.Properties ["access_token"];
+
+			return "Bearer " + account.Properties["access_token"];
 		}
 	}
 }
